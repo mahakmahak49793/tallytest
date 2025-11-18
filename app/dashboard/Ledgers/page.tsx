@@ -86,16 +86,29 @@ export default function LedgerList({ initialCompany = "" }: LedgerListProps) {
     );
   });
 
+  function getFormattedBalance(value: any) {
+  if (!value) return null;
+
+  const num = parseFloat(value);
+  if (isNaN(num)) return null;
+
+  const absValue = Math.abs(num).toLocaleString();
+  const type = num >= 0 ? "Dr" : "Cr";
+
+  return `${absValue} ${type}`;
+}
+
   // Group ledgers by parent for better organization
-  const groupedLedgers = filteredLedgers.reduce((acc, ledger) => {
-    const parent =
-      ledger.parent || (ledger.raw && ledger.raw.PARENT) || "Ungrouped";
-    if (!acc[parent]) {
-      acc[parent] = [];
-    }
-    acc[parent].push(ledger);
-    return acc;
-  }, {} as Record<string, Ledger[]>);
+const groupedLedgers = filteredLedgers.reduce((acc, ledger) => {
+  const parent =
+    ledger.parent ||
+    ledger.raw?.PARENT ||
+    "Others"; // better default than “Ungrouped"
+
+  if (!acc[parent]) acc[parent] = [];
+  acc[parent].push(ledger);
+  return acc;
+}, {} as Record<string, Ledger[]>);
 
   const totalBalance = filteredLedgers.reduce((sum, ledger) => {
     const balance =
@@ -106,398 +119,198 @@ export default function LedgerList({ initialCompany = "" }: LedgerListProps) {
   }, 0);
 
   return (
-    <div
-      style={{
-        maxWidth: 1200,
-        margin: "0 auto",
-        padding: "20px",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      {/* Header Section */}
-      <div className="bg-blue-600 text-white p-8 rounded-xl mb-8 shadow-md">
-  <h1 className="text-2xl font-semibold m-0">📊 Ledger Management</h1>
-  <p className="mt-2 opacity-90 text-base">
-    View and manage your company ledgers
-  </p>
-</div>
-
-
-      {/* Controls Section */}
-      <div
-        style={{
-          background: "white",
-          padding: "24px",
-          borderRadius: "12px",
-          boxShadow: "0 2px 10px rgba(0, 0, 0, 0.08)",
-          marginBottom: "24px",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: "12px",
-            alignItems: "flex-end",
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ flex: 1, minWidth: "300px" }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "8px",
-                fontWeight: "600",
-                color: "#374151",
-              }}
-            >
-              Company Name
-            </label>
-            <input
-              placeholder="Enter company name..."
-              value={company}
-              onChange={handleCompanyChange}
-              onKeyPress={handleKeyPress}
-              style={{
-                padding: "12px 16px",
-                width: "100%",
-                border: "2px solid #e5e7eb",
-                borderRadius: "8px",
-                fontSize: "16px",
-                transition: "border-color 0.2s",
-              }}
-              onFocus={(e) => (e.target.style.borderColor = "#667eea")}
-              onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
-            />
-          </div>
-
-          <button
-            onClick={handleFetchClick}
-            disabled={loading}
-            style={{
-              padding: "12px 24px",
-              background: loading ? "#9ca3af" : "#667eea",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              fontSize: "16px",
-              fontWeight: "600",
-              cursor: loading ? "not-allowed" : "pointer",
-              transition: "all 0.2s",
-              minWidth: "140px",
-            }}
-            onMouseOver={(e) =>
-              !loading && (e.currentTarget.style.background = "#5a6fd8")
-            }
-            onMouseOut={(e) =>
-              !loading && (e.currentTarget.style.background = "#667eea")
-            }
-          >
-            {loading ? (
-              <span
-                style={{ display: "flex", alignItems: "center", gap: "8px" }}
-              >
-                <div
-                  style={{
-                    width: "16px",
-                    height: "16px",
-                    border: "2px solid transparent",
-                    borderTop: "2px solid white",
-                    borderRadius: "50%",
-                    animation: "spin 1s linear infinite",
-                  }}
-                />
-                Loading...
-              </span>
-            ) : (
-              "Fetch Ledgers"
-            )}
-          </button>
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header Section */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-8 rounded-xl mb-8 shadow-lg">
+          <h1 className="text-3xl font-bold mb-2">📊 Ledger Management</h1>
+          <p className="text-blue-100 text-lg">
+            View and manage your company ledgers
+          </p>
         </div>
 
-        {error && (
-          <div
-            style={{
-              marginTop: "16px",
-              padding: "12px 16px",
-              background: "#fee2e2",
-              border: "1px solid #fecaca",
-              borderRadius: "8px",
-              color: "#dc2626",
-            }}
-          >
-            <strong>Error:</strong> {error}
-          </div>
-        )}
-      </div>
-
-      {/* Results Section */}
-      {!loading && !error && (ledgers.length > 0 || searchTerm) && (
-        <div
-          style={{
-            background: "white",
-            padding: "24px",
-            borderRadius: "12px",
-            boxShadow: "0 2px 10px rgba(0, 0, 0, 0.08)",
-            marginBottom: "24px",
-          }}
-        >
-          {/* Stats and Search */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "20px",
-              flexWrap: "wrap",
-              gap: "16px",
-            }}
-          >
-            <div>
-              <h3 style={{ margin: 0, color: "#374151", fontSize: "18px" }}>
-                {filteredLedgers.length} of {ledgers.length} Ledgers
-                {searchTerm && ` matching "${searchTerm}"`}
-              </h3>
-              {totalBalance !== 0 && (
-                <p
-                  style={{
-                    margin: "4px 0 0 0",
-                    color: "#6b7280",
-                    fontSize: "14px",
-                  }}
-                >
-                  Total Opening Balance:{" "}
-                  <strong style={{ color: "#059669" }}>
-                    ₹{totalBalance.toLocaleString()}
-                  </strong>
-                </p>
-              )}
-            </div>
-
-            <div style={{ minWidth: "250px" }}>
+        {/* Controls Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-6 mb-6">
+          <div className="flex flex-col lg:flex-row gap-4 lg:items-end">
+            <div className="flex-1">
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Company Name
+              </label>
               <input
-                placeholder="Search ledgers..."
-                value={searchTerm}
-                onChange={handleSearchChange}
-                style={{
-                  padding: "10px 16px",
-                  width: "100%",
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                }}
+                type="text"
+                placeholder="Enter company name..."
+                value={company}
+                onChange={handleCompanyChange}
+                onKeyPress={handleKeyPress}
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
               />
             </div>
+
+            <button
+              onClick={handleFetchClick}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white px-8 py-3 rounded-lg font-semibold transition-colors duration-200 flex items-center justify-center min-w-[140px]"
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Loading...
+                </span>
+              ) : (
+                "Fetch Ledgers"
+              )}
+            </button>
           </div>
 
-          {/* Ledgers Table */}
-          {Object.keys(groupedLedgers).length > 0 ? (
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "14px",
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#f8fafc" }}>
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "left",
-                        fontWeight: "600",
-                        color: "#374151",
-                        borderBottom: "2px solid #e5e7eb",
-                      }}
-                    >
-                      #
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "left",
-                        fontWeight: "600",
-                        color: "#374151",
-                        borderBottom: "2px solid #e5e7eb",
-                      }}
-                    >
-                      Ledger Name
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "left",
-                        fontWeight: "600",
-                        color: "#374151",
-                        borderBottom: "2px solid #e5e7eb",
-                      }}
-                    >
-                      Parent Group
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "right",
-                        fontWeight: "600",
-                        color: "#374151",
-                        borderBottom: "2px solid #e5e7eb",
-                      }}
-                    >
-                      Opening Balance
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(groupedLedgers).map(
-                    ([parent, parentLedgers]) => (
-                      <React.Fragment key={parent}>
-                        <tr style={{ background: "#f0f4ff" }}>
-                          <td
-                            colSpan={4}
-                            style={{
-                              padding: "8px 16px",
-                              fontWeight: "600",
-                              color: "#667eea",
-                              fontSize: "13px",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.5px",
-                            }}
-                          >
-                            📁 {parent}
-                          </td>
-                        </tr>
-                        {parentLedgers.map((ledger, index) => (
-                          <tr
-                            key={index}
-                            style={{
-                              borderBottom: "1px solid #f3f4f6",
-                              transition: "background-color 0.2s",
-                            }}
-                            onMouseEnter={(e) =>
-                              (e.currentTarget.style.background = "#f9fafb")
-                            }
-                            onMouseLeave={(e) =>
-                              (e.currentTarget.style.background = "transparent")
-                            }
-                          >
-                            <td
-                              style={{ padding: "12px 16px", color: "#6b7280" }}
-                            >
-                              {index + 1}
-                            </td>
-                            <td
-                              style={{
-                                padding: "12px 16px",
-                                fontWeight: "500",
-                              }}
-                            >
-                              {ledger.name ||
-                                (ledger.raw && ledger.raw.NAME) ||
-                                "—"}
-                            </td>
-                            <td
-                              style={{ padding: "12px 16px", color: "#6b7280" }}
-                            >
-                              {ledger.parent ||
-                                (ledger.raw && ledger.raw.PARENT) ||
-                                "—"}
-                            </td>
-                            <td
-                              style={{
-                                padding: "12px 16px",
-                                textAlign: "right",
-                                fontWeight: "500",
-                                color:
-                                  ledger.openingBalance &&
-                                  parseFloat(ledger.openingBalance as string) >=
-                                    0
-                                    ? "#059669"
-                                    : "#dc2626",
-                              }}
-                            >
-                              {ledger.openingBalance
-                                ? `₹${parseFloat(
-                                    ledger.openingBalance as string
-                                  ).toLocaleString()}`
-                                : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                      </React.Fragment>
-                    )
-                  )}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px",
-                color: "#6b7280",
-              }}
-            >
-              <div style={{ fontSize: "48px", marginBottom: "16px" }}>🔍</div>
-              <h3 style={{ margin: "0 0 8px 0" }}>No matching ledgers found</h3>
-              <p>Try adjusting your search terms</p>
+          {error && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 font-medium">
+                <span className="font-semibold">Error:</span> {error}
+              </p>
             </div>
           )}
         </div>
-      )}
 
-      {/* Empty State */}
-      {!loading && !error && ledgers.length === 0 && company && (
-        <div
-          style={{
-            background: "white",
-            padding: "40px",
-            borderRadius: "12px",
-            boxShadow: "0 2px 10px rgba(0, 0, 0, 0.08)",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: "64px", marginBottom: "16px" }}>📋</div>
-          <h3 style={{ margin: "0 0 8px 0", color: "#374151" }}>
-            No Ledgers Found
-          </h3>
-          <p style={{ color: "#6b7280", margin: 0 }}>
-            No ledgers were found for company "{company}". Make sure the company
-            exists and has ledgers in Tally.
-          </p>
-        </div>
-      )}
+        {/* Results Section */}
+        {!loading && !error && (ledgers.length > 0 || searchTerm) && (
+          <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-6 mb-6">
+            {/* Stats and Search */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-800">
+                  {filteredLedgers.length} of {ledgers.length} Ledgers
+                  {searchTerm && (
+                    <span className="text-slate-600"> matching "{searchTerm}"</span>
+                  )}
+                </h3>
+                {/* {totalBalance !== 0 && (
+                  <p className="text-slate-600 mt-1">
+                    Total Opening Balance:{" "}
+                    <span className="font-semibold text-green-600">
+                      ₹{totalBalance.toLocaleString()}
+                    </span>
+                  </p>
+                )} */}
+              </div>
 
-      {/* Initial State */}
-      {!loading && !error && ledgers.length === 0 && !company && (
-        <div
-          style={{
-            background: "white",
-            padding: "40px",
-            borderRadius: "12px",
-            boxShadow: "0 2px 10px rgba(0, 0, 0, 0.08)",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: "64px", marginBottom: "16px" }}>🏢</div>
-          <h3 style={{ margin: "0 0 8px 0", color: "#374151" }}>
-            Ready to Explore Ledgers
-          </h3>
-          <p style={{ color: "#6b7280", margin: 0 }}>
-            Enter a company name above to fetch and view its ledgers
-          </p>
-        </div>
-      )}
+              <div className="w-full lg:w-auto">
+                <input
+                  type="text"
+                  placeholder="Search ledgers..."
+                  value={searchTerm}
+                  onChange={handleSearchChange}
+                  className="w-full lg:w-64 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
 
-      <style jsx>{`
-        @keyframes spin {
-          0% {
-            transform: rotate(0deg);
-          }
-          100% {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
+            {/* Ledgers Table */}
+            {Object.keys(groupedLedgers).length > 0 ? (
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider border-b border-slate-200">
+                        #
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider border-b border-slate-200">
+                        Ledger Name
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider border-b border-slate-200">
+                        Parent Group
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider border-b border-slate-200">
+                        Opening Balance
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {Object.entries(groupedLedgers).map(
+                      ([parent, parentLedgers]) => (
+                        <React.Fragment key={parent}>
+                          <tr className="bg-blue-50">
+                            <td
+                              colSpan={4}
+                              className="px-4 py-3 text-sm font-semibold text-blue-700 uppercase tracking-wide"
+                            >
+                              📁 {parent}
+                            </td>
+                          </tr>
+                          {parentLedgers.map((ledger, index) => (
+                            <tr
+                              key={index}
+                              className="hover:bg-slate-50 transition-colors duration-150"
+                            >
+                              <td className="px-4 py-3 text-sm text-slate-600">
+                                {index + 1}
+                              </td>
+                              <td className="px-4 py-3 text-sm font-medium text-slate-900">
+                                {ledger.name ||
+                                  (ledger.raw && ledger.raw.NAME) ||
+                                  "—"}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-slate-600">
+                                {ledger.parent ||
+                                  (ledger.raw && ledger.raw.PARENT) ||
+                                  "—"}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-right font-medium">
+  {ledger.openingBalance ? (
+    <span className="text-slate-900 font-semibold">
+      {getFormattedBalance(ledger.openingBalance)}
+    </span>
+  ) : (
+    <span className="text-slate-400">—</span>
+  )}
+</td>
+
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="text-5xl mb-4">🔍</div>
+                <h3 className="text-lg font-semibold text-slate-700 mb-2">
+                  No matching ledgers found
+                </h3>
+                <p className="text-slate-500">Try adjusting your search terms</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && !error && ledgers.length === 0 && company && (
+          <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-8 text-center">
+            <div className="text-6xl mb-4">📋</div>
+            <h3 className="text-xl font-semibold text-slate-800 mb-2">
+              No Ledgers Found
+            </h3>
+            <p className="text-slate-600">
+              No ledgers were found for company "{company}". Make sure the company
+              exists and has ledgers in Tally.
+            </p>
+          </div>
+        )}
+
+        {/* Initial State */}
+        {!loading && !error && ledgers.length === 0 && !company && (
+          <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-8 text-center">
+            <div className="text-6xl mb-4">🏢</div>
+            <h3 className="text-xl font-semibold text-slate-800 mb-2">
+              Ready to Explore Ledgers
+            </h3>
+            <p className="text-slate-600">
+              Enter a company name above to fetch and view its ledgers
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -64,7 +64,7 @@ export default function TallyTestPage() {
   const companyName = getCompanyName();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-2xl mx-auto">
         {/* Header Card */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 border border-blue-100">

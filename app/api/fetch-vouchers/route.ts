@@ -40,33 +40,11 @@ function buildVouchersXML(companyName: string, fromDate?: string, toDate?: strin
 </ENVELOPE>`;
 }
 
-// Alternative simpler XML format
-function buildSimpleVouchersXML(companyName: string) {
-  return `<ENVELOPE>
-  <HEADER>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
-  </HEADER>
-  <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-       <REPORTNAME>Day Book</REPORTNAME>
-        <STATICVARIABLES>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-          <SVCURRENTCOMPANY>GennextIT</SVCURRENTCOMPANY>
-          <SVFROMDATE>1-4-2025</SVFROMDATE>
-          <SVTODATE>30-4-2025</SVTODATE>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-    </EXPORTDATA>
-  </BODY>
-</ENVELOPE>`;
-}
-
 interface Voucher {
   voucherNumber: string;
   voucherType: string;
   date: string;
-  partyName: string;
+  voucherName: string;
   amount: number;
   narration: string;
 }
@@ -98,8 +76,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build Tally XML request - trying simpler format first
-const tallyXML = buildVouchersXML(companyName, fromDate || undefined, toDate || undefined);
+    // Build Tally XML request
+    const tallyXML = buildVouchersXML(companyName, fromDate || undefined, toDate || undefined);
     
     console.log('Sending XML to Tally:', tallyXML);
 
@@ -119,7 +97,7 @@ const tallyXML = buildVouchersXML(companyName, fromDate || undefined, toDate || 
       }
     );
 
-    console.log('Tally Response:', response.data);
+    console.log('Tally Response received, length:', response.data.length);
 
     // Check if response is an error
     if (typeof response.data === 'string' && response.data.includes('error')) {
@@ -144,7 +122,7 @@ const tallyXML = buildVouchersXML(companyName, fromDate || undefined, toDate || 
       );
     }
 
-    console.log('Parsed Data:', JSON.stringify(parsedData, null, 2));
+    console.log('XML Parsed successfully');
     
     // Extract vouchers from parsed XML
     const vouchers: Voucher[] = [];
@@ -155,40 +133,210 @@ const tallyXML = buildVouchersXML(companyName, fromDate || undefined, toDate || 
     // Structure 1: ENVELOPE > BODY > DATA > COLLECTION > VOUCHER
     if (parsedData?.ENVELOPE?.BODY?.[0]?.DATA?.[0]?.COLLECTION?.[0]?.VOUCHER) {
       voucherData = parsedData.ENVELOPE.BODY[0].DATA[0].COLLECTION[0].VOUCHER;
+      console.log('Found vouchers in Structure 1 (DATA.COLLECTION.VOUCHER)');
     }
     // Structure 2: ENVELOPE > BODY > EXPORTDATA > REQUESTDATA > TALLYMESSAGE > VOUCHER
     else if (parsedData?.ENVELOPE?.BODY?.[0]?.EXPORTDATA?.[0]?.REQUESTDATA?.[0]?.TALLYMESSAGE) {
       const messages = parsedData.ENVELOPE.BODY[0].EXPORTDATA[0].REQUESTDATA[0].TALLYMESSAGE;
       voucherData = messages.filter((msg: any) => msg.VOUCHER).map((msg: any) => msg.VOUCHER[0]);
+      console.log('Found vouchers in Structure 2 (EXPORTDATA.TALLYMESSAGE)');
     }
     // Structure 3: ENVELOPE > BODY > IMPORTDATA > REQUESTDATA > TALLYMESSAGE > VOUCHER
     else if (parsedData?.ENVELOPE?.BODY?.[0]?.IMPORTDATA?.[0]?.REQUESTDATA?.[0]?.TALLYMESSAGE) {
       const messages = parsedData.ENVELOPE.BODY[0].IMPORTDATA[0].REQUESTDATA[0].TALLYMESSAGE;
       voucherData = messages.filter((msg: any) => msg.VOUCHER).map((msg: any) => msg.VOUCHER[0]);
+      console.log('Found vouchers in Structure 3 (IMPORTDATA.TALLYMESSAGE)');
     }
     // Structure 4: Direct VOUCHER array
     else if (parsedData?.ENVELOPE?.VOUCHER) {
       voucherData = parsedData.ENVELOPE.VOUCHER;
+      console.log('Found vouchers in Structure 4 (Direct VOUCHER)');
     }
 
     if (voucherData && Array.isArray(voucherData)) {
-      for (const voucher of voucherData) {
-        // Handle different possible field structures
+      console.log(`Processing ${voucherData.length} vouchers...`);
+      
+      for (let i = 0; i < voucherData.length; i++) {
+        const voucher = voucherData[i];
+        
         const getField = (field: any) => {
           if (Array.isArray(field)) return field[0] || '';
           return field || '';
         };
 
+        console.log(`\n=== VOUCHER ${i + 1} DEBUG ===`);
+        console.log('Voucher Number:', getField(voucher.VOUCHERNUMBER));
+        console.log('Available top-level keys:', Object.keys(voucher).slice(0, 30));
+        
+        // Extract ledger entries for amount calculation
+        let ledgerEntry = null;
+        let voucherAmount = 0;
+
+        // Strategy 1: Try ALLLEDGERENTRIES.LIST (most common in Day Book/Voucher Register)
+        if (voucher['ALLLEDGERENTRIES.LIST'] && Array.isArray(voucher['ALLLEDGERENTRIES.LIST'])) {
+          const entries = voucher['ALLLEDGERENTRIES.LIST'];
+          console.log('✓ Found ALLLEDGERENTRIES.LIST with', entries.length, 'entries');
+          
+          // Log first entry keys to debug
+          if (entries.length > 0) {
+            console.log('First ledger entry keys:', Object.keys(entries[0]).filter(k => !k.includes('LIST')));
+            console.log('Has AMOUNT field:', !!entries[0].AMOUNT);
+            console.log('Has Amount field:', !!entries[0].Amount);
+            
+            // Log the actual AMOUNT value if it exists
+            if (entries[0].AMOUNT) {
+              console.log('AMOUNT value:', entries[0].AMOUNT);
+            }
+          }
+          
+          // Get first non-cash ledger for party name
+          ledgerEntry = entries.find(entry => {
+            const ledgerName = getField(entry.LEDGERNAME || '');
+            return ledgerName && ledgerName.toLowerCase() !== 'cash';
+          }) || entries[0];
+          
+          // Calculate amount from all entries
+          for (const entry of entries) {
+            let amountStr = '0';
+            
+            // Try different field names
+            if (entry.AMOUNT) {
+              amountStr = getField(entry.AMOUNT);
+              console.log('  → Ledger:', getField(entry.LEDGERNAME), '| AMOUNT:', amountStr);
+            } else if (entry.Amount) {
+              amountStr = getField(entry.Amount);
+              console.log('  → Ledger:', getField(entry.LEDGERNAME), '| Amount:', amountStr);
+            } else {
+              console.log('  → Ledger:', getField(entry.LEDGERNAME), '| No amount field found');
+              // Log first 10 keys to help debug
+              console.log('     Available keys:', Object.keys(entry).filter(k => !k.includes('LIST')).slice(0, 10));
+            }
+            
+            // Clean and parse amount (remove currency symbols, commas, etc.)
+            const cleanAmount = amountStr.toString()
+              .replace(/₹/g, '')
+              .replace(/,/g, '')
+              .replace(/\s/g, '')
+              .trim();
+            
+            const amount = parseFloat(cleanAmount || '0');
+            
+            if (!isNaN(amount) && amount !== 0) {
+              voucherAmount += Math.abs(amount);
+              console.log('     Parsed amount:', amount, '→ Running total:', voucherAmount);
+            }
+          }
+        }
+        
+        // Strategy 2: Try ALLLEDGERENTRIES array
+        else if (Array.isArray(voucher.ALLLEDGERENTRIES)) {
+          const entries = voucher.ALLLEDGERENTRIES;
+          console.log('✓ Found ALLLEDGERENTRIES array with', entries.length, 'entries');
+          
+          if (entries.length > 0) {
+            console.log('First entry keys:', Object.keys(entries[0]).slice(0, 20));
+          }
+          
+          ledgerEntry = entries.find((entry :any)=> {
+            const ledgerName = getField(entry.LEDGERNAME || entry.LedgerName || '');
+            return ledgerName && ledgerName.toLowerCase() !== 'cash';
+          }) || entries[0];
+          
+          for (const entry of entries) {
+            let amountStr = '0';
+            
+            if (entry.AMOUNT) {
+              amountStr = getField(entry.AMOUNT);
+            } else if (entry.Amount) {
+              amountStr = getField(entry.Amount);
+            }
+            
+            const cleanAmount = amountStr.toString()
+              .replace(/₹/g, '')
+              .replace(/,/g, '')
+              .replace(/\s/g, '')
+              .trim();
+            
+            const amount = parseFloat(cleanAmount || '0');
+            
+            if (!isNaN(amount) && amount !== 0) {
+              voucherAmount += Math.abs(amount);
+            }
+          }
+        }
+        
+        // Strategy 3: Try LEDGERENTRIES
+        else if (voucher.LEDGERENTRIES) {
+          console.log('✓ Found LEDGERENTRIES');
+          const entries = Array.isArray(voucher.LEDGERENTRIES) 
+            ? voucher.LEDGERENTRIES 
+            : [voucher.LEDGERENTRIES];
+            
+          ledgerEntry = entries[0];
+            
+          for (const entry of entries) {
+            const amountStr = getField(entry.AMOUNT || entry.Amount || '0');
+            const cleanAmount = amountStr.toString()
+              .replace(/₹/g, '')
+              .replace(/,/g, '')
+              .replace(/\s/g, '')
+              .trim();
+            
+            const amount = parseFloat(cleanAmount || '0');
+            if (!isNaN(amount) && amount !== 0) {
+              voucherAmount += Math.abs(amount);
+            }
+          }
+        }
+
+        // Strategy 4: Try direct voucher amount fields
+        if (voucherAmount === 0) {
+          console.log('⚠ No amount from ledger entries, trying direct fields...');
+          const directAmount = getField(
+            voucher.AMOUNT || 
+            voucher.Amount ||
+            voucher.TOTALAMOUNT ||
+            voucher.TotalAmount ||
+            '0'
+          );
+          console.log('Direct amount field value:', directAmount);
+          
+          const cleanAmount = directAmount.toString()
+            .replace(/₹/g, '')
+            .replace(/,/g, '')
+            .replace(/\s/g, '')
+            .trim();
+          
+          voucherAmount = parseFloat(cleanAmount || '0');
+          
+          if (isNaN(voucherAmount)) {
+            voucherAmount = 0;
+          }
+        }
+
+        console.log('✓ Final voucher amount:', voucherAmount);
+
         vouchers.push({
-          voucherNumber: getField(voucher.VOUCHERNUMBER || voucher.VoucherNumber),
-          voucherType: getField(voucher.VOUCHERTYPENAME || voucher.VoucherTypeName || voucher.VOUCHERTYPE),
-          date: formatDate(getField(voucher.DATE || voucher.Date)),
-          partyName: getField(voucher.PARTYLEDGERNAME || voucher.PartyLedgerName || voucher.PARTYNAME),
-          amount: Math.abs(parseFloat(getField(voucher.AMOUNT || voucher.Amount || '0').toString().replace(/[^0-9.-]/g, ''))),
-          narration: getField(voucher.NARRATION || voucher.Narration),
+          voucherNumber: getField(voucher.VOUCHERNUMBER),
+          voucherType: getField(voucher.VOUCHERTYPENAME || voucher.VOUCHERTYPE),
+          date: formatDate(getField(voucher.DATE)),
+          voucherName: getField(
+            ledgerEntry?.LEDGERNAME ||
+            ledgerEntry?.LedgerName ||
+            voucher.PARTYLEDGERNAME ||
+            voucher.PARTYNAME ||
+            ""
+          ),
+          amount: Math.abs(voucherAmount),
+          narration: getField(voucher.NARRATION),
         });
       }
+    } else {
+      console.log('⚠ No voucher data found in any known structure');
+      console.log('Response structure:', Object.keys(parsedData?.ENVELOPE?.BODY?.[0] || {}));
     }
+
+    console.log(`\n✓ Successfully processed ${vouchers.length} vouchers`);
 
     return NextResponse.json(
       { 
@@ -197,8 +345,8 @@ const tallyXML = buildVouchersXML(companyName, fromDate || undefined, toDate || 
         vouchers: vouchers,
         debug: {
           companyName,
-          xmlSent: tallyXML,
-          rawResponse: typeof response.data === 'string' ? response.data.substring(0, 500) : 'Binary data'
+          fromDate: fromDate || '01-04-2025',
+          toDate: toDate || '30-04-2025',
         }
       },
       { status: 200 }
@@ -215,7 +363,7 @@ const tallyXML = buildVouchersXML(companyName, fromDate || undefined, toDate || 
             '1. Tally is running',
             '2. ODBC Server is enabled (Alt+O > Features > Enable ODBC)',
             '3. Port 9000 is accessible',
-            `4. Company "${process.env.TALLY_COMPANY_NAME}" is loaded`
+            `4. Company "${process.env.TALLY_COMPANY_NAME || 'GennextIT'}" is loaded`
           ]
         },
         { status: 503 }

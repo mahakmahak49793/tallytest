@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Building, Users, FileText, Plus, Home, BarChart3 } from 'lucide-react';
 
-type ViewType = 'dashboard' | 'companies' | 'ledgers' | 'vouchers' | 'create-voucher';
+type ViewType = 'dashboard' | 'companies' | 'ledgers' | 'vouchers' | 'create-voucher' | 'customers';
 
 export default function DashboardLayout({
   children,
@@ -17,23 +17,33 @@ export default function DashboardLayout({
   
   const navigation = [
     { id: 'dashboard', name: 'Dashboard', icon: Home, path: '/dashboard' },
-    // { id: 'companies', name: 'View Companies', icon: Building, path: '/dashboard/tally-test' },
     { id: 'ledgers', name: 'View Ledgers', icon: Users, path: '/dashboard/Ledgers' },
     { id: 'vouchers', name: 'View Vouchers', icon: FileText, path: '/dashboard/Vouchers' },
     { id: 'create-voucher', name: 'Create Voucher', icon: Plus, path: '/dashboard/CreateVoucher' },
+    { id: 'customers', name: 'View Customers', icon: Users, path: '/dashboard/customers' }
   ];
 
-  const getActiveView = (): ViewType => {
-    const currentPath = pathname;
-    if (currentPath === '/dashboard') return 'dashboard';
-    if (currentPath.includes('/companies')) return 'companies';
-    if (currentPath.includes('/ledgers')) return 'ledgers';
-    if (currentPath.includes('/vouchers')) return 'vouchers';
-    if (currentPath.includes('/create-voucher')) return 'create-voucher';
-    return 'dashboard';
-  };
+ const getActiveView = (): ViewType => {
+  const currentPath = pathname;
+  
+  // Sort navigation items by path length (longest first) to ensure more specific paths are checked first
+  const sortedNavigation = [...navigation].sort((a, b) => b.path.length - a.path.length);
+  
+  // Check each navigation item, starting with the most specific paths
+  for (const item of sortedNavigation) {
+    if (currentPath === item.path || currentPath.startsWith(item.path + '/')) {
+      return item.id as ViewType;
+    }
+  }
+  
+  return 'dashboard';
+};
 
   const activeView = getActiveView();
+
+  // Debug: log the current path and active view
+  console.log('Current path:', pathname);
+  console.log('Active view:', activeView);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -62,6 +72,9 @@ export default function DashboardLayout({
                   >
                     <Icon className="w-5 h-5" />
                     <span className="font-medium">{item.name}</span>
+                    {isActive && (
+                      <span className="ml-auto w-2 h-2 bg-blue-600 rounded-full"></span>
+                    )}
                   </button>
                 </li>
               );
