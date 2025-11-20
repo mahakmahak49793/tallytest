@@ -2,9 +2,6 @@
 'use client'
 import { useEffect, useState, FormEvent, ChangeEvent } from "react";
 
-// ──────────────────────────────────────────────────────────────
-// Types
-// ──────────────────────────────────────────────────────────────
 interface Customer {
   name: string;
   mailingName?: string;
@@ -13,7 +10,7 @@ interface Customer {
   mobile?: string;
   email?: string;
   gstin?: string;
-  openingBalance?: number; // stored as signed number: positive = Cr, negative = Dr
+  openingBalance?: number;
 }
 
 interface Message {
@@ -21,9 +18,6 @@ interface Message {
   text: string;
 }
 
-// ──────────────────────────────────────────────────────────────
-// Safe value display helper
-// ──────────────────────────────────────────────────────────────
 function safeValue(value: unknown): string {
   if (!value) return "";
   if (typeof value === "string") return value;
@@ -34,15 +28,14 @@ function safeValue(value: unknown): string {
   return String(value);
 }
 
-// ──────────────────────────────────────────────────────────────
-// Main Component
-// ──────────────────────────────────────────────────────────────
 export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [details, setDetails] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -58,8 +51,10 @@ export default function Customers() {
 
   const [createLoading, setCreateLoading] = useState(false);
   const [createMessage, setCreateMessage] = useState<Message | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editMessage, setEditMessage] = useState<Message | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Load customers on mount
   useEffect(() => {
     loadCustomers();
   }, []);
@@ -80,6 +75,7 @@ export default function Customers() {
   async function loadCustomerDetails(name: string) {
     setSelected(name);
     setLoading(true);
+    setShowEditForm(false);
     try {
       const res = await fetch(`/api/customers/${encodeURIComponent(name)}`, {
         cache: "no-store",
@@ -146,6 +142,103 @@ export default function Customers() {
     }
   }
 
+  async function handleUpdateCustomer(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!selected) return;
+
+    setEditLoading(true);
+    setEditMessage(null);
+
+    const balanceValue = formData.openingBalance ? parseFloat(formData.openingBalance) || 0 : 0;
+    const signedBalance = formData.openingBalanceType === "Credit" ? balanceValue : -balanceValue;
+
+    const payload: any = {};
+  
+  if (formData.mailingName.trim()) payload.mailingName = formData.mailingName.trim();
+  if (formData.address.trim()) payload.address = formData.address.trim();
+  if (formData.phone.trim()) payload.phone = formData.phone.trim();
+  if (formData.mobile.trim()) payload.mobile = formData.mobile.trim();
+  if (formData.email.trim()) payload.email = formData.email.trim();
+  if (formData.gstin.trim()) payload.gstin = formData.gstin.trim();
+  if (balanceValue !== 0) payload.openingBalance = signedBalance;
+
+  try {
+    const res = await fetch(`/api/customers/${encodeURIComponent(selected)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setEditMessage({ type: "success", text: data.message || "Customer updated successfully!" });
+
+        setTimeout(() => {
+          loadCustomers();
+          loadCustomerDetails(selected);
+          setShowEditForm(false);
+          setEditMessage(null);
+        }, 2000);
+      } else {
+        setEditMessage({ type: "error", text: data.error || "Failed to update customer" });
+      }
+    } catch (error) {
+      setEditMessage({ type: "error", text: "Network error. Please try again." });
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function handleDeleteCustomer() {
+    if (!selected) return;
+
+    setDeleteLoading(true);
+
+    try {
+      const res = await fetch(`/api/customers/${encodeURIComponent(selected)}`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setShowDeleteConfirm(false);
+        setSelected(null);
+        setDetails(null);
+        loadCustomers();
+      } else {
+        alert(data.error || "Failed to delete customer");
+      }
+    } catch (error) {
+      alert("Network error. Please try again.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
+  function startEdit() {
+    if (!details) return;
+    
+    const balance = details.openingBalance ?? 0;
+    const absBalance = Math.abs(balance);
+    const balanceType = balance < 0 ? "Debit" : "Credit";
+
+    setFormData({
+      name: details.name,
+      mailingName: details.mailingName || "",
+      address: details.address || "",
+      phone: details.phone || "",
+      mobile: details.mobile || "",
+      email: details.email || "",
+      gstin: details.gstin || "",
+      openingBalance: absBalance > 0 ? absBalance.toString() : "",
+      openingBalanceType: balanceType,
+    });
+    setShowEditForm(true);
+    setEditMessage(null);
+  }
+
   function handleInputChange(
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) {
@@ -154,16 +247,20 @@ export default function Customers() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-blue-50 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-blue-900">Customer Management</h1>
-            <p className="text-blue-600 mt-1">View and manage customer information</p>
+            <p className="text-blue-600 mt-1">Complete CRUD Operations</p>
           </div>
           <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
+            onClick={() => {
+              setShowCreateForm(!showCreateForm);
+              setShowEditForm(false);
+              setCreateMessage(null);
+            }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
           >
             {showCreateForm ? (
@@ -189,24 +286,13 @@ export default function Customers() {
           <div className="bg-white rounded-xl shadow-lg border border-blue-100 p-6 mb-6">
             <h2 className="text-xl font-bold text-blue-900 mb-4 flex items-center gap-2">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
               </svg>
               Create New Customer
             </h2>
 
             {createMessage && (
-              <div
-                className={`mb-4 p-4 rounded-lg border ${
-                  createMessage.type === "success"
-                    ? "bg-green-100 text-green-800 border-green-300"
-                    : "bg-red-100 text-red-800 border-red-300"
-                }`}
-              >
+              <div className={`mb-4 p-4 rounded-lg border ${createMessage.type === "success" ? "bg-green-100 text-green-800 border-green-300" : "bg-red-100 text-red-800 border-red-300"}`}>
                 {createMessage.text}
               </div>
             )}
@@ -366,15 +452,10 @@ export default function Customers() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Customer List */}
           <div className="bg-white rounded-xl shadow-md border border-blue-100">
-            <div className="p-5 border-b border-blue-100 bg-linear-to-r from-blue-50 to-white">
+            <div className="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-white">
               <h2 className="font-semibold text-blue-900 flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
                 Customers ({customers.length})
               </h2>
@@ -392,7 +473,7 @@ export default function Customers() {
                         onClick={() => loadCustomerDetails(c.name)}
                         className={`w-full text-left p-4 rounded-lg transition-all duration-200 ${
                           selected === c.name
-                            ? "bg-linear-to-br from-blue-500 to-blue-600 text-white shadow-lg transform scale-[1.02]"
+                            ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg transform scale-[1.02]"
                             : "bg-white hover:bg-blue-50 border border-blue-100 hover:border-blue-300 text-slate-700 hover:shadow-md"
                         }`}
                       >
@@ -415,17 +496,39 @@ export default function Customers() {
           {/* Customer Details */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-md border border-blue-100 h-full">
-              <div className="p-5 border-b border-blue-100 bg-linear-to-br from-blue-50 to-white">
+              <div className="p-5 border-b border-blue-100 bg-gradient-to-br from-blue-50 to-white flex justify-between items-center">
                 <h2 className="font-semibold text-blue-900 flex items-center gap-2">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   Customer Details
                 </h2>
+                {details && !showEditForm && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={startEdit}
+                      className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-semibold shadow hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold shadow hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="p-6 h-[calc(100vh-240px)] overflow-auto">
-                {!details && !loading && (
+                {!details && !loading && !showEditForm && (
                   <div className="text-center py-20">
                     <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
                       <svg className="w-10 h-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -436,15 +539,161 @@ export default function Customers() {
                   </div>
                 )}
 
-                {loading && (
+                {loading && !showEditForm && (
                   <div className="flex items-center justify-center py-20">
                     <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
                   </div>
                 )}
 
-                {details && !loading && (
+                {/* Edit Form */}
+                {showEditForm && details && (
+                  <div>
+                    <h2 className="text-xl font-bold text-blue-900 mb-4 flex items-center gap-2">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit Customer: {details.name}
+                    </h2>
+
+                    {editMessage && (
+                      <div className={`mb-4 p-4 rounded-lg border ${editMessage.type === "success" ? "bg-green-100 text-green-800 border-green-300" : "bg-red-100 text-red-800 border-red-300"}`}>
+                        {editMessage.text}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleUpdateCustomer} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-blue-900 mb-1">Mailing Name</label>
+                          <input
+                            type="text"
+                            name="mailingName"
+                            value={formData.mailingName}
+                            onChange={handleInputChange}
+                            className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-blue-900 mb-1">Email</label>
+                          <input
+                            type="email"
+                            name="email"
+                            value={formData.email}
+                            onChange={handleInputChange}
+                            className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-blue-900 mb-1">Phone</label>
+                          <input
+                            type="tel"
+                            name="phone"
+                            value={formData.phone}
+                            onChange={handleInputChange}
+                            className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-blue-900 mb-1">Mobile</label>
+                          <input
+                            type="tel"
+                            name="mobile"
+                            value={formData.mobile}
+                            onChange={handleInputChange}
+                            className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-blue-900 mb-1">GSTIN</label>
+                          <input
+                            type="text"
+                            name="gstin"
+                            value={formData.gstin}
+                            onChange={handleInputChange}
+                            className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-blue-900 mb-1">Address</label>
+                          <textarea
+                            name="address"
+                            value={formData.address}
+                            onChange={handleInputChange}
+                            rows={3}
+                            className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-blue-900 mb-1">Opening Balance</label>
+                          <input
+                            type="number"
+                            name="openingBalance"
+                            value={formData.openingBalance}
+                            onChange={handleInputChange}
+                            step="0.01"
+                            className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-blue-900 mb-1">Balance Type</label>
+                          <select
+                            name="openingBalanceType"
+                            value={formData.openingBalanceType}
+                            onChange={handleInputChange}
+                            className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            <option value="Credit">Credit (Cr)</option>
+                            <option value="Debit">Debit (Dr)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 pt-4">
+                        <button
+                          type="submit"
+                          disabled={editLoading}
+                          className="flex-1 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white px-6 py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2"
+                        >
+                          {editLoading ? (
+                            <>
+                              <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                              Updating...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Update Customer
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowEditForm(false);
+                            setEditMessage(null);
+                          }}
+                          className="px-6 py-3 border border-blue-300 text-blue-700 rounded-lg font-semibold hover:bg-blue-50 transition-all duration-200"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {/* Customer Details View */}
+                {details && !loading && !showEditForm && (
                   <div className="space-y-5">
-                    <div className="bg-linear-to-br from-blue-600 to-blue-700 p-6 rounded-xl text-white shadow-lg">
+                    <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-xl text-white shadow-lg">
                       <div className="flex items-center gap-4">
                         <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">
                           {safeValue(details.name).charAt(0).toUpperCase()}
@@ -576,6 +825,59 @@ export default function Customers() {
             </div>
           </div>
         </div>
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Delete Customer</h3>
+                  <p className="text-slate-600 text-sm mt-1">This action cannot be undone</p>
+                </div>
+              </div>
+              
+              <p className="text-slate-700 mb-6">
+                Are you sure you want to delete <strong className="text-slate-900">{selected}</strong>? 
+                All customer data will be permanently removed.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDeleteCustomer}
+                  disabled={deleteLoading}
+                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white px-6 py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  {deleteLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete Customer
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleteLoading}
+                  className="px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-all duration-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import { parseStringPromise } from "xml2js";
 
 const TALLY_URL = process.env.TALLY_URL ?? "http://localhost:9000";
 
-function buildXML(company?: string) {
+function buildFetchXML(company?: string) {
   return `
   <ENVELOPE>
     <HEADER>
@@ -44,6 +44,106 @@ function buildXML(company?: string) {
   `;
 }
 
+function buildUpdateXML(name: string, customerData: any, company?: string) {
+  const {
+    mailingName,
+    address,
+    phone,
+    mobile,
+    email,
+    gstin,
+    openingBalance
+  } = customerData;
+
+  return `
+  <ENVELOPE>
+    <HEADER>
+      <VERSION>1</VERSION>
+      <TALLYREQUEST>Import</TALLYREQUEST>
+      <TYPE>Data</TYPE>
+      <ID>All Masters</ID>
+    </HEADER>
+    <BODY>
+      <DESC>
+        <STATICVARIABLES>
+          ${company ? `<SVCURRENTCOMPANY>${company}</SVCURRENTCOMPANY>` : ""}
+        </STATICVARIABLES>
+      </DESC>
+      <DATA>
+        <TALLYMESSAGE>
+          <LEDGER NAME="${name}" ACTION="Alter">
+            <NAME>${name}</NAME>
+            <PARENT>Sundry Debtors</PARENT>
+
+            ${mailingName !== undefined && mailingName !== "" ? `<MAILINGNAME>${mailingName}</MAILINGNAME>` : ""}
+
+            ${address !== undefined && address !== "" ? `
+            <ADDRESS>${address}</ADDRESS>` : ""}
+
+            ${email !== undefined && email !== "" ? `<EMAIL>${email}</EMAIL>` : ""}
+
+            ${phone !== undefined && phone !== "" ? `
+            <PHONENUMBER.LIST>
+              <PHONENUMBER>${phone}</PHONENUMBER>
+              <ISCONTACTPERSON>No</ISCONTACTPERSON>
+            </PHONENUMBER.LIST>` : ""}
+
+            ${mobile !== undefined && mobile !== "" ? `
+            <CONTACT.LIST>
+              <PERSONNAME>${mailingName || name}</PERSONNAME>
+              <MOBILENUMBER>${mobile}</MOBILENUMBER>
+              <ISCONTACTPERSON>Yes</ISCONTACTPERSON>
+            </CONTACT.LIST>` : ""}
+
+            ${gstin !== undefined && gstin !== "" ? `
+            <GSTDETAILS.LIST>
+              <APPLICABLEFROM>19700101</APPLICABLEFROM>
+              <GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>
+              <GSTIN>${gstin}</GSTIN>
+            </GSTDETAILS.LIST>` : ""}
+
+            ${openingBalance !== undefined ? `
+            <OPENINGBALANCE>${openingBalance}</OPENINGBALANCE>` : ""}
+
+            <ISBILLWISEON>Yes</ISBILLWISEON>
+            <ISCOSTCENTRESON>No</ISCOSTCENTRESON>
+
+          </LEDGER>
+        </TALLYMESSAGE>
+      </DATA>
+    </BODY>
+  </ENVELOPE>
+  `;
+}
+
+function buildDeleteXML(name: string, company?: string) {
+  return `
+  <ENVELOPE>
+    <HEADER>
+      <VERSION>1</VERSION>
+      <TALLYREQUEST>Import</TALLYREQUEST>
+      <TYPE>Data</TYPE>
+      <ID>All Masters</ID>
+    </HEADER>
+    <BODY>
+      <DESC>
+        <STATICVARIABLES>
+          ${company ? `<SVCURRENTCOMPANY>${company}</SVCURRENTCOMPANY>` : ""}
+        </STATICVARIABLES>
+      </DESC>
+      <DATA>
+        <TALLYMESSAGE>
+          <LEDGER NAME="${name}" ACTION="Delete">
+            <NAME>${name}</NAME>
+          </LEDGER>
+        </TALLYMESSAGE>
+      </DATA>
+    </BODY>
+  </ENVELOPE>
+  `;
+}
+
+// GET - Read single customer
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ name: string }> }
@@ -54,7 +154,7 @@ export async function GET(
     const url = new URL(req.url);
     const companyName = url.searchParams.get("company") || undefined;
 
-    const xmlRequest = buildXML(companyName);
+    const xmlRequest = buildFetchXML(companyName);
 
     const tallyResponse = await fetch(TALLY_URL, {
       method: "POST",
@@ -63,14 +163,7 @@ export async function GET(
     });
 
     const xml = await tallyResponse.text();
-    
-    // Log raw XML to see structure
-    console.log("Raw XML response:", xml.substring(0, 1000));
-    
     const json = await parseStringPromise(xml, { explicitArray: false });
-
-    // Log parsed JSON structure
-    console.log("Parsed JSON:", JSON.stringify(json, null, 2).substring(0, 2000));
 
     const ledgers =
       json?.ENVELOPE?.BODY?.DATA?.COLLECTION?.LEDGER ||
@@ -79,18 +172,11 @@ export async function GET(
 
     const list = Array.isArray(ledgers) ? ledgers : [ledgers];
 
-    // Log first ledger to see its structure
-    console.log("First ledger structure:", JSON.stringify(list[0], null, 2));
-
     const searchName = decodeURIComponent(name).trim().toLowerCase();
-    
-    console.log("Searching for:", searchName);
 
     const found = list.find(
       (l) => {
-        // Check both l.NAME and l.$?.NAME (attribute vs element)
         const ledgerName = String(l.NAME || l.$?.NAME || l._.NAME || "").trim().toLowerCase();
-        console.log(`Comparing "${ledgerName}" with "${searchName}"`, l);
         return ledgerName === searchName;
       }
     );
@@ -103,12 +189,8 @@ export async function GET(
       }, { status: 404 });
     }
 
-    console.log("Found customer:", found);
-
-    // Get name from wherever it is
     const customerName = found.NAME || found.$?.NAME || null;
 
-    // Extract phone numbers
     const phoneList = found["PHONENUMBER.LIST"]?.PHONENUMBER || found.PHONENUMBER;
     const mobileList = found["MOBILENUMBER.LIST"]?.MOBILENUMBER || found.MOBILENUMBER;
 
@@ -147,6 +229,110 @@ export async function GET(
     console.error("Error fetching customer:", err);
     return NextResponse.json(
       { error: "Failed to fetch customer", details: err.message },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT - Update customer
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ name: string }> }
+) {
+  try {
+    const { name } = await params;
+    const url = new URL(req.url);
+    const companyName = url.searchParams.get("company") || undefined;
+    
+    const body = await req.json();
+    
+    const xmlRequest = buildUpdateXML(decodeURIComponent(name), body, companyName);
+    
+    console.log("Updating customer with XML:", xmlRequest);
+
+    const tallyResponse = await fetch(TALLY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/xml" },
+      body: xmlRequest,
+    });
+
+    const xml = await tallyResponse.text();
+    console.log("Tally response:", xml);
+
+    if (xml.includes("ALTERED") || xml.includes("Import")) {
+      return NextResponse.json({
+        success: true,
+        message: "Customer updated successfully",
+        customerName: name
+      });
+    } else if (xml.includes("Error") || xml.includes("ERROR")) {
+      return NextResponse.json(
+        { error: "Tally returned an error", details: xml },
+        { status: 400 }
+      );
+    } else {
+      return NextResponse.json({
+        success: true,
+        message: "Customer update request sent",
+        customerName: name
+      });
+    }
+
+  } catch (error: any) {
+    console.error("Error updating customer:", error);
+    return NextResponse.json(
+      { error: "Failed to update customer", details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - Delete customer
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ name: string }> }
+) {
+  try {
+    const { name } = await params;
+    const url = new URL(req.url);
+    const companyName = url.searchParams.get("company") || undefined;
+    
+    const xmlRequest = buildDeleteXML(decodeURIComponent(name), companyName);
+    
+    console.log("Deleting customer with XML:", xmlRequest);
+
+    const tallyResponse = await fetch(TALLY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/xml" },
+      body: xmlRequest,
+    });
+
+    const xml = await tallyResponse.text();
+    console.log("Tally response:", xml);
+
+    if (xml.includes("DELETED") || xml.includes("Import")) {
+      return NextResponse.json({
+        success: true,
+        message: "Customer deleted successfully",
+        customerName: name
+      });
+    } else if (xml.includes("Error") || xml.includes("ERROR")) {
+      return NextResponse.json(
+        { error: "Tally returned an error", details: xml },
+        { status: 400 }
+      );
+    } else {
+      return NextResponse.json({
+        success: true,
+        message: "Customer deletion request sent",
+        customerName: name
+      });
+    }
+
+  } catch (error: any) {
+    console.error("Error deleting customer:", error);
+    return NextResponse.json(
+      { error: "Failed to delete customer", details: error.message },
       { status: 500 }
     );
   }
