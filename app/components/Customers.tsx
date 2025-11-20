@@ -6,10 +6,10 @@ interface Customer {
   name: string;
   mailingName?: string;
   address?: string;
-  phone?: string;
-  mobile?: string;
+  phone?: string | { _: string; $?: { TYPE: string } };
+  mobile?: string | { _: string; $?: { TYPE: string } };
   email?: string;
-  gstin?: string;
+  gstin?: string |{ _: string; $?: { TYPE: string } };
   openingBalance?: number;
 }
 
@@ -21,10 +21,52 @@ interface Message {
 function safeValue(value: unknown): string {
   if (!value) return "";
   if (typeof value === "string") return value;
-  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "number") return value.toString();
+  if (Array.isArray(value)) return value.map(item => safeValue(item)).join(", ");
+  
   if (typeof value === "object" && value !== null) {
-    return (value as any)._ ?? JSON.stringify(value);
+    // Extract value from _ property
+    if ((value as any)._ !== undefined) {
+      return String((value as any)._);
+    }
+    
+    // Extract from common XML structures
+    const paths = [
+      'MOBILENUMBER', 'PHONENUMBER', 'GSTIN', 'ADDRESS', 'MAILINGNAME', 'EMAIL',
+      'NAME', '$.NAME', 'PHONENUMBER.LIST.PHONENUMBER', 'MOBILENUMBER.LIST.MOBILENUMBER',
+      'CONTACT.LIST.MOBILENUMBER', 'GSTDETAILS.LIST.GSTIN'
+    ];
+    
+    for (const path of paths) {
+      const keys = path.split('.');
+      let current: any = value;
+      for (const key of keys) {
+        if (current && typeof current === 'object' && key in current) {
+          current = current[key];
+        } else {
+          current = null;
+          break;
+        }
+      }
+      if (current && typeof current !== 'object') {
+        return String(current);
+      }
+    }
+    
+    // Try to find any string value in the object
+    for (const key in value as any) {
+      const val = (value as any)[key];
+      if (typeof val === 'string') {
+        return val;
+      }
+      if (typeof val === 'number') {
+        return val.toString();
+      }
+    }
+    
+    return "";
   }
+  
   return String(value);
 }
 
@@ -217,27 +259,32 @@ export default function Customers() {
     }
   }
 
-  function startEdit() {
-    if (!details) return;
-    
-    const balance = details.openingBalance ?? 0;
-    const absBalance = Math.abs(balance);
-    const balanceType = balance < 0 ? "Debit" : "Credit";
+ function startEdit() {
+  if (!details) return;
+  
+  const balance = details.openingBalance ?? 0;
+  const absBalance = Math.abs(balance);
+  const balanceType = balance < 0 ? "Debit" : "Credit";
 
-    setFormData({
-      name: details.name,
-      mailingName: details.mailingName || "",
-      address: details.address || "",
-      phone: details.phone || "",
-      mobile: details.mobile || "",
-      email: details.email || "",
-      gstin: details.gstin || "",
-      openingBalance: absBalance > 0 ? absBalance.toString() : "",
-      openingBalanceType: balanceType,
-    });
-    setShowEditForm(true);
-    setEditMessage(null);
-  }
+  // Extract values from nested objects if they exist
+  const phone = typeof details.phone === 'object' && details.phone !== null ? details.phone._ : details.phone;
+  const mobile = typeof details.mobile === 'object' && details.mobile !== null ? details.mobile._ : details.mobile;
+  const gstin = typeof details.gstin === 'object' && details.gstin !== null ? details.gstin._ : details.gstin;
+
+  setFormData({
+    name: details.name,
+    mailingName: details.mailingName || "",
+    address: details.address || "",
+    phone: phone || "",
+    mobile: mobile || "",
+    email: details.email || "",
+    gstin: gstin || "",
+    openingBalance: absBalance > 0 ? absBalance.toString() : "",
+    openingBalanceType: balanceType,
+  });
+  setShowEditForm(true);
+  setEditMessage(null);
+}
 
   function handleInputChange(
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>

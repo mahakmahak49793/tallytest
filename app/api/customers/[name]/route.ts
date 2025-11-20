@@ -24,17 +24,17 @@ function buildFetchXML(company?: string) {
             <COLLECTION NAME="CustomerCollection">
               <TYPE>Ledger</TYPE>
               <CHILDOF>Sundry Debtors</CHILDOF>
-              <FETCH>
-                NAME,
-                MAILINGNAME,
-                ADDRESS,
-                PHONENUMBER,
-                MOBILENUMBER,
-                EMAIL,
-                GSTIN,
-                OPENINGBALANCE,
-                OPENINGBALANCETYPE
-              </FETCH>
+          <FETCH>
+  NAME,
+  MAILINGNAME,
+  ADDRESS,
+  LEDGERPHONE,
+  LEDGERMOBILE,
+  EMAIL,
+  PARTYGSTIN,
+  OPENINGBALANCE,
+  OPENINGBALANCETYPE
+</FETCH>
             </COLLECTION>
           </TDLMESSAGE>
         </TDL>
@@ -45,15 +45,8 @@ function buildFetchXML(company?: string) {
 }
 
 function buildUpdateXML(name: string, customerData: any, company?: string) {
-  const {
-    mailingName,
-    address,
-    phone,
-    mobile,
-    email,
-    gstin,
-    openingBalance
-  } = customerData;
+  const { mailingName, address, phone, mobile, email, gstin, openingBalance } =
+    customerData;
 
   return `
   <ENVELOPE>
@@ -75,35 +68,39 @@ function buildUpdateXML(name: string, customerData: any, company?: string) {
             <NAME>${name}</NAME>
             <PARENT>Sundry Debtors</PARENT>
 
-            ${mailingName !== undefined && mailingName !== "" ? `<MAILINGNAME>${mailingName}</MAILINGNAME>` : ""}
+            ${
+              mailingName !== undefined && mailingName !== ""
+                ? `<MAILINGNAME>${mailingName}</MAILINGNAME>`
+                : ""
+            }
 
-            ${address !== undefined && address !== "" ? `
-            <ADDRESS>${address}</ADDRESS>` : ""}
+            ${
+              address !== undefined && address !== ""
+                ? `
+            <ADDRESS>${address}</ADDRESS>`
+                : ""
+            }
 
-            ${email !== undefined && email !== "" ? `<EMAIL>${email}</EMAIL>` : ""}
+            ${
+              email !== undefined && email !== ""
+                ? `<EMAIL>${email}</EMAIL>`
+                : ""
+            }
 
-            ${phone !== undefined && phone !== "" ? `
-            <PHONENUMBER.LIST>
-              <PHONENUMBER>${phone}</PHONENUMBER>
-              <ISCONTACTPERSON>No</ISCONTACTPERSON>
-            </PHONENUMBER.LIST>` : ""}
+           ${phone !== undefined && phone !== "" ? `
+<LEDGERPHONE>${phone}</LEDGERPHONE>` : ""}
 
-            ${mobile !== undefined && mobile !== "" ? `
-            <CONTACT.LIST>
-              <PERSONNAME>${mailingName || name}</PERSONNAME>
-              <MOBILENUMBER>${mobile}</MOBILENUMBER>
-              <ISCONTACTPERSON>Yes</ISCONTACTPERSON>
-            </CONTACT.LIST>` : ""}
+${mobile !== undefined && mobile !== "" ? `
+<LEDGERMOBILE>${mobile}</LEDGERMOBILE>` : ""}
 
-            ${gstin !== undefined && gstin !== "" ? `
-            <GSTDETAILS.LIST>
-              <APPLICABLEFROM>19700101</APPLICABLEFROM>
-              <GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>
-              <GSTIN>${gstin}</GSTIN>
-            </GSTDETAILS.LIST>` : ""}
-
-            ${openingBalance !== undefined ? `
-            <OPENINGBALANCE>${openingBalance}</OPENINGBALANCE>` : ""}
+${gstin !== undefined && gstin !== "" ? `
+<PARTYGSTIN>${gstin}</PARTYGSTIN>` : ""}
+            ${
+              openingBalance !== undefined
+                ? `
+            <OPENINGBALANCE>${openingBalance}</OPENINGBALANCE>`
+                : ""
+            }
 
             <ISBILLWISEON>Yes</ISBILLWISEON>
             <ISCOSTCENTRESON>No</ISCOSTCENTRESON>
@@ -150,7 +147,7 @@ export async function GET(
 ) {
   try {
     const { name } = await params;
-    
+
     const url = new URL(req.url);
     const companyName = url.searchParams.get("company") || undefined;
 
@@ -174,41 +171,39 @@ export async function GET(
 
     const searchName = decodeURIComponent(name).trim().toLowerCase();
 
-    const found = list.find(
-      (l) => {
-        const ledgerName = String(l.NAME || l.$?.NAME || l._.NAME || "").trim().toLowerCase();
-        return ledgerName === searchName;
-      }
-    );
+    const found = list.find((l) => {
+      const ledgerName = String(l.NAME || l.$?.NAME || l._.NAME || "")
+        .trim()
+        .toLowerCase();
+      return ledgerName === searchName;
+    });
 
     if (!found) {
-      return NextResponse.json({ 
-        error: "Customer not found",
-        searchedFor: searchName,
-        availableCustomers: list.map(l => l.NAME || l.$?.NAME || "unknown")
-      }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: "Customer not found",
+          searchedFor: searchName,
+          availableCustomers: list.map((l) => l.NAME || l.$?.NAME || "unknown"),
+        },
+        { status: 404 }
+      );
     }
 
     const customerName = found.NAME || found.$?.NAME || null;
 
-    const phoneList = found["PHONENUMBER.LIST"]?.PHONENUMBER || found.PHONENUMBER;
-    const mobileList = found["MOBILENUMBER.LIST"]?.MOBILENUMBER || found.MOBILENUMBER;
+    const phone = found.LEDGERPHONE || null;
+    const mobile = found.LEDGERMOBILE || null;
 
-    const phone = Array.isArray(phoneList) 
-      ? phoneList.join(", ") 
-      : phoneList || null;
+    const email =
+      found.EMAIL?._ || found["EMAIL.LIST"]?.EMAIL || found.EMAIL || null;
 
-    const mobile = Array.isArray(mobileList) 
-      ? mobileList.join(", ") 
-      : mobileList || null;
+    const address =
+      typeof found.ADDRESS === "string"
+        ? found.ADDRESS
+        : found["ADDRESS.LIST"]?.ADDRESS || null;
 
-    const email = found.EMAIL?._ || found["EMAIL.LIST"]?.EMAIL || found.EMAIL || null;
-
-    const address = typeof found.ADDRESS === "string"
-      ? found.ADDRESS
-      : found["ADDRESS.LIST"]?.ADDRESS || null;
-
-    const mailingName = found["MAILINGNAME.LIST"]?.MAILINGNAME || found.MAILINGNAME || null;
+    const mailingName =
+      found["MAILINGNAME.LIST"]?.MAILINGNAME || found.MAILINGNAME || null;
 
     return NextResponse.json({
       customer: {
@@ -218,13 +213,12 @@ export async function GET(
         phone: phone,
         mobile: mobile,
         email: email,
-        gstin: found.GSTIN ?? null,
+        gstin: found.PARTYGSTIN ?? null,
         openingBalance: found.OPENINGBALANCE?._ ?? found.OPENINGBALANCE ?? null,
         openingBalanceType: found.OPENINGBALANCE?.$?.TYPE ?? null,
-        raw: found
-      }
+        raw: found,
+      },
     });
-
   } catch (err: any) {
     console.error("Error fetching customer:", err);
     return NextResponse.json(
@@ -243,11 +237,15 @@ export async function PUT(
     const { name } = await params;
     const url = new URL(req.url);
     const companyName = url.searchParams.get("company") || undefined;
-    
+
     const body = await req.json();
-    
-    const xmlRequest = buildUpdateXML(decodeURIComponent(name), body, companyName);
-    
+
+    const xmlRequest = buildUpdateXML(
+      decodeURIComponent(name),
+      body,
+      companyName
+    );
+
     console.log("Updating customer with XML:", xmlRequest);
 
     const tallyResponse = await fetch(TALLY_URL, {
@@ -263,7 +261,7 @@ export async function PUT(
       return NextResponse.json({
         success: true,
         message: "Customer updated successfully",
-        customerName: name
+        customerName: name,
       });
     } else if (xml.includes("Error") || xml.includes("ERROR")) {
       return NextResponse.json(
@@ -274,10 +272,9 @@ export async function PUT(
       return NextResponse.json({
         success: true,
         message: "Customer update request sent",
-        customerName: name
+        customerName: name,
       });
     }
-
   } catch (error: any) {
     console.error("Error updating customer:", error);
     return NextResponse.json(
@@ -296,9 +293,9 @@ export async function DELETE(
     const { name } = await params;
     const url = new URL(req.url);
     const companyName = url.searchParams.get("company") || undefined;
-    
+
     const xmlRequest = buildDeleteXML(decodeURIComponent(name), companyName);
-    
+
     console.log("Deleting customer with XML:", xmlRequest);
 
     const tallyResponse = await fetch(TALLY_URL, {
@@ -314,7 +311,7 @@ export async function DELETE(
       return NextResponse.json({
         success: true,
         message: "Customer deleted successfully",
-        customerName: name
+        customerName: name,
       });
     } else if (xml.includes("Error") || xml.includes("ERROR")) {
       return NextResponse.json(
@@ -325,10 +322,9 @@ export async function DELETE(
       return NextResponse.json({
         success: true,
         message: "Customer deletion request sent",
-        customerName: name
+        customerName: name,
       });
     }
-
   } catch (error: any) {
     console.error("Error deleting customer:", error);
     return NextResponse.json(
