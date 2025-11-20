@@ -94,6 +94,7 @@ export async function GET(
         return ledgerName === searchName;
       }
     );
+    console.log("All available fields:", Object.keys(found));
 
     if (!found) {
       return NextResponse.json({ 
@@ -108,17 +109,9 @@ export async function GET(
     // Get name from wherever it is
     const customerName = found.NAME || found.$?.NAME || null;
 
-    // Extract phone numbers
-    const phoneList = found["PHONENUMBER.LIST"]?.PHONENUMBER || found.PHONENUMBER;
-    const mobileList = found["MOBILENUMBER.LIST"]?.MOBILENUMBER || found.MOBILENUMBER;
-
-    const phone = Array.isArray(phoneList) 
-      ? phoneList.join(", ") 
-      : phoneList || null;
-
-    const mobile = Array.isArray(mobileList) 
-      ? mobileList.join(", ") 
-      : mobileList || null;
+   const phone = found.LEDGERPHONE || null;
+const mobile = found.LEDGERMOBILE || null;
+const gstin = found.PARTYGSTIN || null;
 
     const email = found.EMAIL?._ || found["EMAIL.LIST"]?.EMAIL || found.EMAIL || null;
 
@@ -136,7 +129,7 @@ export async function GET(
         phone: phone,
         mobile: mobile,
         email: email,
-        gstin: found.GSTIN ?? null,
+        gstin: found.PARTYGSTIN ?? null,
         openingBalance: found.OPENINGBALANCE?._ ?? found.OPENINGBALANCE ?? null,
         openingBalanceType: found.OPENINGBALANCE?.$?.TYPE ?? null,
         raw: found
