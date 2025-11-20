@@ -1,8 +1,8 @@
 // app/dashboard/page.tsx
 "use client";
 
+import { ArrowRight, Building, Calendar, Calendar as CalendarIcon, Clock, FileText, Mail, MapPin, Phone, Plus, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { Building, Users, FileText, Plus, ArrowRight,Calendar, MapPin, Phone, Mail, Clock, Calendar as CalendarIcon, Star } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 interface Company {
@@ -148,7 +148,7 @@ export default function DashboardPage() {
     return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
   };
 
-  const activeCompany = companies.find(company => company.isActive);
+  // const activeCompany = companies.find(company => company.isActive);
 
   return (
     <div className="p-8">
@@ -227,8 +227,8 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-3 ">
                       <div className={`p-2 rounded-lg ${
                         company.isActive 
-                          ? 'bg-gradient-to-r from-green-500 to-green-600' 
-                          : 'bg-gradient-to-r from-blue-500 to-blue-600'
+                          ? 'bg-linear-to-r from-green-500 to-green-600' 
+                          : 'bg-linear-to-r from-blue-500 to-blue-600'
                       } text-white`}>
                         <Building className="w-5 h-5" />
                       </div>
@@ -295,7 +295,7 @@ export default function DashboardPage() {
                     {/* Address */}
                     {company.address && (
                       <div className="flex items-start gap-2 text-sm text-gray-600">
-                        <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <MapPin className="w-4 h-4 mt-0.5 shrink-0" />
                         <span className="line-clamp-2">{company.address}</span>
                       </div>
                     )}
@@ -343,7 +343,7 @@ export default function DashboardPage() {
               <div className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-lg bg-gradient-to-r ${colorClasses[action.color as keyof typeof colorClasses]} text-white group-hover:scale-110 transition-transform duration-300`}>
+                    <div className={`p-3 rounded-lg bg-linear-to-r ${colorClasses[action.color as keyof typeof colorClasses]} text-white group-hover:scale-110 transition-transform duration-300`}>
                       <Icon className="w-6 h-6" />
                     </div>
                     <div>

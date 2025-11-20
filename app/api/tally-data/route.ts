@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/tally-data/route.ts
 import { NextResponse } from 'next/server';
 
@@ -129,7 +130,7 @@ function parseXMLToJSON(xmlString: string) {
   };
 
   const extractAllMessages = (xml: string) => {
-    const regex = /<TALLYMESSAGE>(.*?)<\/TALLYMESSAGE>/gs;
+    const regex = /<TALLYMESSAGE>([\s\S]*?)<\/TALLYMESSAGE>/g;
     const matches = [...xml.matchAll(regex)];
     return matches.map(match => match[1].trim());
   };
