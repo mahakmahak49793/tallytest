@@ -1,72 +1,74 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function StockItemsPage() {
+  const [company, setCompany] = useState("MyCompany");
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [raw, setRaw] = useState("");
 
-  const fetchStockItems = async () => {
-    try {
-      const res = await fetch("/api/stockitems");
-      const data = await res.json();
+  async function fetchStockItems() {
+    setLoading(true);
 
-      if (data.success) {
-        setItems(data.data);
-      }
-    } catch (err) {
-      console.error("Error fetching items:", err);
-    }
+    const res = await fetch(`/api/stockitems?company=${company}`);
+    const data = await res.json();
+
     setLoading(false);
-  };
 
-  useEffect(() => {
-    fetchStockItems();
-  }, []);
+    if (data.success) {
+      setItems(data.items);
+      setRaw(data.rawXML);
+    } else {
+      alert("Error: " + data.error);
+    }
+  }
 
   return (
-    <div style={{ padding: "40px" }}>
-      <h1 style={{ fontSize: "28px", marginBottom: "20px" }}>
-        Stock Items from Tally
-      </h1>
+    <div style={{ padding: "20px" }}>
+      <h1>Stock Items from Tally</h1>
 
-      {loading ? (
-        <p>Loading...</p>
-      ) : (
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            border: "1px solid #ccc",
-          }}
-        >
-          <thead>
-            <tr style={{ background: "#f0f0f0" }}>
-              <th style={{ padding: "10px", border: "1px solid #ccc" }}>Name</th>
-              <th style={{ padding: "10px", border: "1px solid #ccc" }}>
-                Closing Balance
-              </th>
-              <th style={{ padding: "10px", border: "1px solid #ccc" }}>Unit</th>
-            </tr>
-          </thead>
+      <input
+        type="text"
+        value={company}
+        onChange={(e) => setCompany(e.target.value)}
+        placeholder="Enter Company Name"
+        style={{ padding: "8px", width: "250px", marginRight: "10px" }}
+      />
 
-          <tbody>
-            {items.map((item: any, index: number) => (
-              <tr key={index}>
-                <td style={{ padding: "10px", border: "1px solid #ccc" }}>
-                  {item.name}
-                </td>
-                <td style={{ padding: "10px", border: "1px solid #ccc" }}>
-                  {item.closingBalance}
-                </td>
-                <td style={{ padding: "10px", border: "1px solid #ccc" }}>
-                  {item.unit}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <button
+        onClick={fetchStockItems}
+        style={{ padding: "8px 15px", cursor: "pointer" }}
+      >
+        Fetch Items
+      </button>
+
+      {loading && <p>Loading...</p>}
+
+      <h2 style={{ marginTop: "20px" }}>Stock Items:</h2>
+      <ul>
+        {items.map((item: any, index) => (
+          <li key={index}>
+            {item?.STOCKITEM?.$.NAME ||
+              item?.STOCKITEM?.NAME ||
+              "Unnamed Item"}
+          </li>
+        ))}
+      </ul>
+
+      <h3>Raw XML Response (Debug)</h3>
+      <pre
+        style={{
+          background: "#222",
+          color: "#0f0",
+          padding: "10px",
+          fontSize: "12px",
+          maxHeight: "300px",
+          overflow: "auto",
+        }}
+      >
+        {raw}
+      </pre>
     </div>
   );
 }
