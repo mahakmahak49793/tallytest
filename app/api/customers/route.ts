@@ -126,7 +126,7 @@ export async function GET(req: Request) {
     const ledgers =
       json?.ENVELOPE?.BODY?.DATA?.COLLECTION?.LEDGER ||
       json?.ENVELOPE?.BODY?.COLLECTION?.LEDGER ||
-      [];w
+      [];
 
     const list = Array.isArray(ledgers) ? ledgers : [ledgers];
 
