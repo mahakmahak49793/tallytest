@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/companies/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 const TALLY_URL = 'http://localhost:9000';
 
@@ -18,7 +19,7 @@ interface Company {
   isActive: boolean;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Step 1: Fetch all companies
     const companies = await fetchAllCompanies();

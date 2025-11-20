@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // /api/customers/[name]/route.ts
 import { NextResponse } from "next/server";
 import { parseStringPromise } from "xml2js";
